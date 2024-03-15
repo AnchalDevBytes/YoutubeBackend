@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { User } from "../models/user.model.js";
 import { apiError } from "../utils/apiError.js";
 import { apiResponse } from "../utils/apiResponse.js";
@@ -297,12 +298,13 @@ const updateAvatar = asyncHandler(async (req, res) => {
     }
     ).select("-password")
 
+    //TODOS: after successfully updating the avtaar, delete the previous one
+
   return res
           .status(200)
           .json(new apiResponse(200, user, "Avatar updated successfully"))
 
 })
-
 
 
 const updateCoverImage = asyncHandler(async (req, res) => {
@@ -335,5 +337,153 @@ const updateCoverImage = asyncHandler(async (req, res) => {
 })
 
 
-export { registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, getCurrentUser, updateAccountDetail, updateAvatar, updateCoverImage };
+const getUserChannelProfile = asyncHandler( async (req, res) => {
+  //get username from params. and check if username exist in params or not. because when user hit n particular user then only you can see their profile in params.
+  const {username} = req.params;
+
+  if(!username?.trim()) {
+    throw new apiError(400, "Username is missing")
+  }
+
+  // aggregation pipelining
+  const channel = await User.aggregate([
+    {
+      $match:{
+        username:username?.toLowerCase()
+      }
+    },
+    //to find subscribers of particular channel. we count channel here to find subscriber. (channel ke subscriber kitne h)
+    {
+      $lookup:{
+        from:"subscriptions",          //Subscription === subscriptions(in db) 
+        localField:"_id",              //in locally we matched with _id
+        foreignField:"channel",        // in foreign match with channel
+        as:"subscribers"               //we callled it as subscribers
+      }
+    },
+    //this lookups is to find that the channel is subscribing  to whom.(channel ne kitno ko subscribe kiya h)
+    {
+      $lookup:{
+        from:"subscriptions",
+        localField:"_id",
+        foreignField:"subscriber",
+        as:"subscribedTo"
+      }
+    },
+    //to add these feilds in user details
+    {
+      $addFields:{
+        //count subscribers of channel and add
+        subscriberCount : {
+          $size:"$subscribers"
+        },
+        //count the channels which are subscribed by this channel and add
+        channelSubscribedToCount: {
+          $size:"$subscribedTo"
+        },
+        // to check wheteher we subscribed to particular channel or not.
+        // check with condition if user able to see someone's channel profile that mean he/she hit a req so take user id from req and check in that channel subscribers, it found or not. if yes it goes to condition then else in else.  
+        isSubscribed: {
+          $cond: {
+            if: {$in: [req.user?._id, "$subscribers.subscriber"]},
+            then:true,
+            else:false
+          }
+        }
+      }
+    },
+    //anathor pipeline so that we can send only thosse data which are required in channel profile details.
+    {
+      $project:{
+        username:1,
+        fullname:1,
+        subscriberCount:1,
+        channelSubscribedToCount:1,
+        isSubscribed:1,
+        avatar:1,
+        coverImage:1,
+        email:1
+      }
+    }
+  ])
+
+  if(!channel?.length){
+    throw new apiError(400, "Channel does not exist")
+  }
+
+  return res
+          .status(200)
+          .json(new apiResponse(200, channel[0], "User channel fetched successfully"))
+})
+
+
+const getWatchHistory = asyncHandler (async (req, res) => {
+  const user = User.aggregate([
+      {
+        $match:{
+          _id: new mongoose.Types.ObjectId(req.user._id)  //_id always return a string but it is nt considered as mongodb id, (Mongodb id consist the ObjectId('string id)) but from _id only string are found, so cnvert it into mongodb id
+        },
+        $lookup:{
+          //now we are in user . after pipline, objects of videos are come. 
+          from:"videos",
+          localField:"watchHistory",
+          foreignField:"_id ",
+          as:"watchHistory",
+          //this pipline is fr videos which is inside this
+          pipeline:[
+            {
+              $lookup:{
+                from:"users",
+                localField:"owner",
+                foreignField:"_id",
+                as:"owner",
+                //this pipeline is for extracting the data which are in use because it return a array in which all details of user are coming. 
+                pipeline:[
+                  {
+                    $project:{
+                      username:1,
+                      fullname:1,
+                      avatar:1
+                    }
+                  }
+                ]
+              }
+            },
+            // anathor piplines is for extracting the 0th index of array where data are present
+            {
+              $addFields:{
+                //here all field are in owner so, override that owner array with its 0th index or first index to get a object so, that easily extract required data. 
+                owner:{
+                  $first:"$owner"          // this owner is now a object with required data.
+                }
+              }
+            }
+          ]
+        }
+      }
+  ])
+
+  return res
+          .status(200)
+          .json(new apiResponse(
+            200,
+            user[0].watchHostory,
+            "watchHistory fetch successfully"
+          ))
+})
+
+
+export {
+   registerUser,
+   loginUser,
+   logoutUser,
+   refreshAccessToken,
+   changeCurrentPassword,
+   getCurrentUser,
+   updateAccountDetail,
+   updateAvatar,
+   updateCoverImage,
+   getUserChannelProfile,
+   getWatchHistory
+   };
   
