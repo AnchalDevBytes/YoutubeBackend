@@ -3,7 +3,7 @@ import { User } from "../models/user.model.js";
 import { apiError } from "../utils/apiError.js";
 import { apiResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { uploadFileOnCloudinary } from "../utils/cloudinary.js";
+import { deleteFileFromCloudinary, uploadFileOnCloudinary } from "../utils/cloudinary.js";
 import jwt from 'jsonwebtoken'
 
 
@@ -285,7 +285,18 @@ const updateAvatar = asyncHandler(async (req, res) => {
     throw new apiError(400, "Error while uploading updated avatar in cloud")
   }
 
-  //set the changes
+
+  //get the current user's avatar url
+  const currentUser = await User.findById(req.user._d).select("avatar");
+  const currentAvatar = currentUser?.avatar
+
+  //if uploaded successfully delete previous one
+  if(currentAvatar) {
+    await deleteFileFromCloudinary(currentAvatar)
+  }
+
+
+  //set the changes / update avatar
   const user = await User.findByIdAndUpdate(
     req.user._id,
     {
