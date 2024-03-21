@@ -285,9 +285,9 @@ const updateAvatar = asyncHandler(async (req, res) => {
     throw new apiError(400, "Error while uploading updated avatar in cloud")
   }
 
-
+//TODOS: after successfully updating the avtaar, delete the previous one
   //get the current user's avatar url
-  const currentUser = await User.findById(req.user._d).select("avatar");
+  const currentUser = await User.findById(req.user._id).select("avatar");
   const currentAvatar = currentUser?.avatar
 
   //if uploaded successfully delete previous one
@@ -309,7 +309,6 @@ const updateAvatar = asyncHandler(async (req, res) => {
     }
     ).select("-password")
 
-    //TODOS: after successfully updating the avtaar, delete the previous one
 
   return res
           .status(200)
@@ -328,6 +327,13 @@ const updateCoverImage = asyncHandler(async (req, res) => {
 
   if(!coverImage?.url) {
     throw new apiError(400, "Error while uploading updated coverImage in cloud")
+  }
+
+  const currentUser = await User.findById(req.user._id).select("coverImage")
+  const currentCoverImage = currentUser?.coverImage
+
+  if(currentCoverImage) {
+    await deleteFileFromCloudinary(currentCoverImage);
   }
 
   const user = await User.findByIdAndUpdate(
