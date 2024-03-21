@@ -147,7 +147,7 @@ const logoutUser = asyncHandler (async (req, res) => {
     await User.findByIdAndUpdate(
         req.user._id,
         {
-          $set:{
+          $unset:{
             refreshToken:1
           }
         },
@@ -435,11 +435,13 @@ const getUserChannelProfile = asyncHandler( async (req, res) => {
 
 
 const getWatchHistory = asyncHandler (async (req, res) => {
-  const user = User.aggregate([
+  const user = await User.aggregate([
       {
         $match:{
           _id: new mongoose.Types.ObjectId(req.user._id)  //_id always return a string but it is nt considered as mongodb id, (Mongodb id consist the ObjectId('string id)) but from _id only string are found, so cnvert it into mongodb id
-        },
+        }
+      },
+      {
         $lookup:{
           //now we are in user . after pipline, objects of videos are come. 
           from:"videos",
@@ -484,7 +486,7 @@ const getWatchHistory = asyncHandler (async (req, res) => {
           .status(200)
           .json(new apiResponse(
             200,
-            user[0].watchHostory,
+            user[0].watchHostory || [],
             "watchHistory fetch successfully"
           ))
 })
